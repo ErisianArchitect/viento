@@ -46,16 +46,29 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    const util_module = b.addModule("util", .{
+        .root_source_file = b.path("src/util/root.zig"),
+        .target = target,
+    });
+
+    const ecs_module = b.addModule("ecs", .{
+        .root_source_file = b.path("src/ecs/root.zig"),
+        .target = target,
+    });
+
     const system_module = b.addModule("system", .{
         .root_source_file = b.path("src/system/root.zig"),
         .target = target,
     });
 
-    const util_module = b.addModule("util", .{
-        .root_source_file = b.path("src/util/root.zig"),
-        .target = target,
-    });
-    
+    system_module.addImport("core", core_module);
+    system_module.addImport("ecs", ecs_module);
+    system_module.addImport("util", util_module);
+
+    ecs_module.addImport("core", core_module);
+    ecs_module.addImport("util", util_module);
+    ecs_module.addImport("system", system_module);
+
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
     // to the module defined above, it's sometimes preferable to split business
@@ -97,12 +110,40 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "core", .module = core_module },
                 .{ .name = "system", .module = system_module },
                 .{ .name = "util", .module = util_module },
+                .{ .name = "ecs", .module = ecs_module },
             },
         }),
     });
     
-    exe.root_module.addImport("system", system_module);
-    
+    const check_exe = b.addExecutable(.{
+        .name = "viento-check",
+        .root_module = b.createModule(.{
+            // b.createModule defines a new module just like b.addModule but,
+            // unlike b.addModule, it does not expose the module to consumers of
+            // this package, which is why in this case we don't have to give it a name.
+            .root_source_file = b.path("src/main.zig"),
+            // Target and optimization levels must be explicitly wired in when
+            // defining an executable or library (in the root module), and you
+            // can also hardcode a specific target for an executable or library
+            // definition if desireable (e.g. firmware for embedded devices).
+            .target = target,
+            .optimize = optimize,
+            // List of modules available for import in source files part of the
+            // root module.
+            .imports = &.{
+                // Here "viento" is the name you will use in your source code to
+                // import this module (e.g. `@import("viento")`). The name is
+                // repeated because you are allowed to rename your imports, which
+                // can be extremely useful in case of collisions (which can happen
+                // importing modules from different packages).
+                .{ .name = "viento", .module = mod },
+                .{ .name = "core", .module = core_module },
+                .{ .name = "system", .module = system_module },
+                .{ .name = "util", .module = util_module },
+                .{ .name = "ecs", .module = ecs_module },
+            },
+        }),
+    });
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden
@@ -115,7 +156,6 @@ pub fn build(b: *std.Build) void {
     // For a top level step to actually do something, it must depend on other
     // steps (e.g. a Run step, as we will see in a moment).
     const run_step = b.step("run", "Run the app");
-
     // This creates a RunArtifact step in the build graph. A RunArtifact step
     // invokes an executable compiled by Zig. Steps will only be executed by the
     // runner if invoked directly by the user (in the case of top level steps)
@@ -124,17 +164,14 @@ pub fn build(b: *std.Build) void {
     // the user runs `zig build run`, so we create a dependency link.
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
-
     // By making the run step depend on the default step, it will be run from the
     // installation directory rather than directly from within the cache directory.
     run_cmd.step.dependOn(b.getInstallStep());
-
+    
+    const check_step = b.step("check", "Check the compilation.");
+    check_step.dependOn(&check_exe.step);
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
     // Creates an executable that will run `test` blocks from the provided module.
     // Here `mod` needs to define a target, which is why earlier we made sure to
     // set the releative field.
