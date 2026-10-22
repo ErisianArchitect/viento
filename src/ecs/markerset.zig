@@ -1,7 +1,11 @@
 
-const comp = @import("comp.zig");
-const typemap = @import("typemap.zig");
-const bitset = @import("bitset.zig");
+const std = @import("std");
+
+const util = @import("util");
+
+const comp = util.comp;
+const typemap = util.typemap;
+const bitset = util.bitset;
 
 pub fn MarkerSet(comptime marker_types: []const type) type {
     return struct {
@@ -21,6 +25,7 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
             mask: usize,
 
             fn maskAll(comptime Markers: []const type) *const Bitset {
+                @setEvalBranchQuota(std.math.maxInt(u32));
                 var maskset = Bitset.init();
                 for (Markers) |m| {
                     maskset.add(indices.id(m));
@@ -31,6 +36,7 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
             fn countMasks(comptime Markers: []const type) usize {
                 return struct {
                     pub const result = ret: {
+                        @setEvalBranchQuota(std.math.maxInt(u32));
                         const maskset = maskAll(Markers);
                         var mask_count = 0;
                         for (maskset.masks) |m| {
@@ -46,7 +52,11 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
                 remove,
             };
 
-            pub fn init(comptime action: MultiMaskAction, comptime Markers: []const type) [countMasks(Markers)]@This() {
+            pub fn init(
+                comptime action: MultiMaskAction,
+                comptime Markers: []const type,
+            ) [countMasks(Markers)]@This() {
+                @setEvalBranchQuota(std.math.maxInt(u32));
                 const marks = maskAll(Markers);
                 var mask_count = 0;
                 for (marks.masks) |m| {
@@ -85,6 +95,7 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
             const multi = struct {
                 pub const value = MultiMask.init(.add, Markers);
             };
+            @setEvalBranchQuota(std.math.maxInt(u32));
             inline for (multi.value) |m| {
                 self.bits.masks[m.index] |= m.mask;
             }
@@ -94,6 +105,7 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
             const multi = struct {
                 pub const value = MultiMask.init(.remove, Markers);
             };
+            @setEvalBranchQuota(std.math.maxInt(u32));
             inline for (multi.value) |m| {
                 self.bits.masks[m.index] &= m.mask;
             }
@@ -110,6 +122,7 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
                 pub const add_masks = MultiMask.init(.add, Markers);
                 pub const remove_masks = MultiMask.init(.remove, Markers);
             };
+            @setEvalBranchQuota(std.math.maxInt(u32));
             if (value) {
                 inline for(multi.add_masks) |m| {
                     self.bits.masks[m.index] |= m.mask;
@@ -127,12 +140,46 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
             return self.bits.get(index);
         }
 
+        pub fn hasAny(self: *const Self, comptime Markers: []const type) bool {
+            const multi = struct {
+                pub const value = MultiMask.init(.add, Markers);
+            };
+            @setEvalBranchQuota(std.math.maxInt(u32));
+            inline for (multi.value) |m| {
+                if (self.bits.masks[m.index] & m.mask != 0) return true;
+            }
+            return false;
+        }
+
+        pub fn missingAny(self: *const Self, comptime Markers: []const type) bool {
+            const multi = struct {
+                pub const value = MultiMask.init(.add, Markers);
+            };
+            @setEvalBranchQuota(std.math.maxInt(u32));
+            inline for (multi.value) |m| {
+                if (self.bits.masks[m.index] & m.mask != m.mask) return true;
+            }
+            return false;
+        }
+
         pub fn hasAll(self: *const Self, comptime Markers: []const type) bool {
             const multi = struct {
                 pub const value = MultiMask.init(.add, Markers);
             };
+            @setEvalBranchQuota(std.math.maxInt(u32));
             inline for (multi.value) |m| {
                 if (self.bits.masks[m.index] & m.mask != m.mask) return false;
+            }
+            return true;
+        }
+
+        pub fn missingAll(self: *const Self, comptime Markers: []const type) bool {
+            const multi = struct {
+                pub const value = MultiMask.init(.add, Markers);
+            };
+            @setEvalBranchQuota(std.math.maxInt(u32));
+            inline for (multi.value) |m| {
+                if (self.bits.masks[m.index] & m.mask != 0) return false;
             }
             return true;
         }
@@ -141,23 +188,15 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
             const multi = struct {
                 pub const value = MultiMask.init(.add, Markers);
             };
+            @setEvalBranchQuota(std.math.maxInt(u32));
             inline for (multi.value) |m| {
                 if (self.bits.masks[m.index] & m.mask != 0) return false;
             }
             return true;
         }
 
-        pub fn hasAny(self: *const Self, comptime Markers: []const type) bool {
-            const multi = struct {
-                pub const value = MultiMask.init(.add, Markers);
-            };
-            inline for (multi.value) |m| {
-                if (self.bits.masks[m.index] & m.mask != 0) return true;
-            }
-            return false;
-        }
-
         pub fn isEmpty(self: *const Self) bool {
+            @setEvalBranchQuota(std.math.maxInt(u32));
             for (self.bits.masks) |m| {
                 if (m != 0) return false;
             }

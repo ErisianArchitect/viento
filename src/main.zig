@@ -188,13 +188,73 @@ pub fn SystemBuilder(comptime system_fn: anytype) SystemBuilderType(.{.System = 
 //     .after(.{baz_system})
 //     .build()
 
-const markerset = @import("util").markerset;
+const ecs = @import("ecs");
 
-const MarkerSet = markerset.MarkerSet(manyTys(0, 1024));
+const MarkerSet = ecs.MarkerSet(manyTys(0, 1024));
+const marker = ecs.marker;
+const q = marker.MarkerQuery;
+
+fn MarkerQueryParam(comptime query: marker.MarkerQuery) type {
+    return struct {
+        pub const PROTOTYPE = MarkerQueryParam;
+        pub const QUERY = query;
+    };
+}
+
+fn bar_system(
+    _: MarkerQueryParam(.with(Ty(1))),
+) void {
+}
+
+const test_query = q.all(&.{
+    q.with(Ty(1)),
+    q.with(Ty(2)),
+    q.with(Ty(64)),
+    q.with(Ty(68)),
+    q.withAny(&.{
+        Ty(1),
+        Ty(35),
+    }),
+    q.withAll(&.{
+        Ty(1),
+        Ty(2),
+        Ty(64),
+        Ty(68),
+    }),
+    q.withoutAny(&.{
+        Ty(1),
+        Ty(2),
+        Ty(35),
+    }),
+    q.withoutAll(&.{
+        Ty(8),
+        Ty(9),
+        Ty(10),
+    }),
+    q.not(q.with(Ty(0))),
+    q.all(&.{
+        q.with(Ty(1)),
+        q.with(Ty(2)),
+    }),
+    q.any(&.{
+        q.with(Ty(1)),
+        q.without(Ty(1)),
+    }),
+    q.none(&.{
+        q.with(Ty(55)),
+        q.without(Ty(2)),
+    }),
+});
+
+const test_query_parts = test_query.participants();
 
 pub fn main(_: std.process.Init) !void {
+    inline for (test_query_parts) |t| {
+        println("Type: {s}", .{@typeName(t)});
+    }
     var mset = MarkerSet.init();
     mset.addAll(&.{Ty(1), Ty(2), Ty(64), Ty(68)});
+    try std.testing.expect(test_query.eval(&mset));
     try std.testing.expectEqual(mset.bits.masks.len, 16);
     try std.testing.expect(mset.has(Ty(1)));
     try std.testing.expect(mset.has(Ty(2)));

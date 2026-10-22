@@ -1,6 +1,10 @@
 
 const std = @import("std");
 
+const stackvec = @import("stackvec.zig");
+
+const StackVec = stackvec.StackVec;
+
 const XxHash64 = std.hash.XxHash64;
 
 pub inline fn UniqueType(comptime T: type) type {
@@ -202,4 +206,30 @@ pub fn zipWithLeft(
             break :ret internArray(mutability, Tup, new_items);
         };
     }.result;
+}
+
+pub fn uniqueCount(comptime arr: anytype) usize {
+    return comptime ret: {
+        @setEvalBranchQuota(std.math.maxInt(u32));
+        var items = StackVec(@typeInfo(@TypeOf(arr)).array.child, arr.len).init();
+        outer: for (arr) |item| {
+            for (items.items[0..items.len]) |ded| {
+                if (item == ded) continue :outer;
+            }
+            items.push(item);
+        }
+        break :ret items.len;
+    };
+}
+
+pub fn dedup(comptime T: type, comptime arr: anytype) [uniqueCount(arr)]T {
+    var items = StackVec(T, uniqueCount(arr)).init();
+    outer: for (arr) |item| {
+        @setEvalBranchQuota(std.math.maxInt(u32));
+        for (items.items[0..items.len]) |ded| {
+            if (item == ded) continue :outer;
+        }
+        items.push(item);
+    }
+    return items.items;
 }

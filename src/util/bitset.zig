@@ -4,7 +4,7 @@ const comp = @import("comp.zig");
 
 pub fn Bitset(comptime bit_count: u32) type {
     const bitlen: usize = @bitSizeOf(usize);
-    const mask_count = blk: {
+    const mask_count: usize = blk: {
         if (bitlen == 0) break :blk 0
         else break :blk (bit_count + (bitlen - 1)) / bitlen;
     };
@@ -23,22 +23,23 @@ pub fn Bitset(comptime bit_count: u32) type {
             return bit >> bitlen_shift;
         }
 
-        pub inline fn maskSubbit(bit: usize) u32 {
-            return bit & subbit_mask;
+        pub inline fn maskSubbit(bit: usize) u6 {
+            if (comptime bitlen <= 64) @setRuntimeSafety(false);
+            return @intCast(bit & subbit_mask);
         }
 
         pub fn add(self: *Self, bit: usize) void {
             if (comptime mask_count == 0) return;
             const mask_index = maskIndex(bit);
             const subbit_index = maskSubbit(bit);
-            self.masks[mask_index] |= 1 << subbit_index;
+            self.masks[mask_index] |= @as(usize, 1) << subbit_index;
         }
 
         pub fn remove(self: *Self, bit: usize) void {
             if (comptime mask_count == 0) return;
             const mask_index = maskIndex(bit);
             const subbit_index = maskSubbit(bit);
-            self.masks[mask_index] &= ~(1 << subbit_index);
+            self.masks[mask_index] &= ~(@as(usize, 1) << subbit_index);
         }
 
         pub fn set(self: *Self, bit: usize, value: bool) void {
@@ -54,7 +55,7 @@ pub fn Bitset(comptime bit_count: u32) type {
             if (comptime mask_count == 0) return false;
             const mask_index = maskIndex(bit);
             const subbit_index = maskSubbit(bit);
-            return (self.masks[mask_index] & (1 << subbit_index)) != 0;
+            return (self.masks[mask_index] & (@as(usize, 1) << subbit_index)) != 0;
         }
     };
 }
