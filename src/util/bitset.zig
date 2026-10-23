@@ -51,6 +51,13 @@ pub fn Bitset(comptime bit_count: u32) type {
             }
         }
 
+        pub fn toggle(self: *Self, bit: usize) void {
+            if (comptime mask_count == 0) return;
+            const mask_index = maskIndex(bit);
+            const subbit_index = maskSubbit(bit);
+            self.masks[mask_index] ^= @as(usize, 1) << subbit_index;
+        }
+
         pub fn get(self: *const Self, bit: usize) bool {
             if (comptime mask_count == 0) return false;
             const mask_index = maskIndex(bit);

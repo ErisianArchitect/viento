@@ -3,10 +3,16 @@ const std = @import("std");
 
 const util = @import("util");
 
+const markerset = @import("markerset.zig");
+
 const stackvec = util.stackvec;
 const comp = util.comp;
 
+pub const MarkerSet = markerset.MarkerSet;
+
 const StackVec = stackvec.StackVec;
+
+const CallMod = std.lang.CallModifier;
 
 pub const MarkerQuery = union(enum) {
     const Self = @This();
@@ -138,34 +144,62 @@ pub const MarkerQuery = union(enum) {
         }.result;
     }
 
-    pub fn eval(comptime self: Self, set: anytype) bool {
+    pub const CfgEvalMod = enum {
+        auto,
+        never_inline,
+        always_inline,
+
+        pub fn callModifier(comptime self: @This()) CallMod {
+            return switch (comptime self) {
+                .auto => .auto,
+                .never_inline => .never_inline,
+                .always_inline => .always_inline,
+            };
+        }
+    };
+
+    pub fn cfgEval(comptime self: Self, comptime modifier: CfgEvalMod, set: anytype) bool {
+        const callmod = comptime modifier.callModifier();
+        const Set = blk: {
+            const SetT = @TypeOf(set);
+            const inf = @typeInfo(SetT);
+            if (inf == .pointer) {
+                break :blk inf.pointer.child;
+            } else {
+                @compileError("Expected pointer");
+            }
+        };
         @setEvalBranchQuota(std.math.maxInt(u32));
         switch (comptime self) {
-            .With => |t| return set.has(t),
-            .Without => |t| return !set.has(t),
-            .WithAny => |sub| return set.hasAny(sub),
-            .WithAll => |sub| return set.hasAll(sub),
-            .WithoutAny => |sub| return set.missingAny(sub),
-            .WithoutAll => |sub| return set.missingAll(sub),
+            .With => |t| return @call(callmod, Set.has, .{set, t}),
+            .Without => |t| return !@call(callmod, Set.has, .{set, t}),
+            .WithAny => |sub| return @call(callmod, Set.hasAny, .{set, sub}),
+            .WithAll => |sub| return @call(callmod, Set.hasAll, .{set, sub}),
+            .WithoutAny => |sub| return @call(callmod, Set.missingAny, .{set, sub}),
+            .WithoutAll => |sub| return @call(callmod, Set.missingAll, .{set, sub}),
             .Any => |sub| {
                 inline for (sub) |q| {
-                    if (q.eval(set)) return true;
+                    if (q.cfgEval(modifier, set)) return true;
                 }
                 return false;
             },
             .All => |sub| {
                 inline for (sub) |q| {
-                    if (!q.eval(set)) return false;
+                    if (!q.cfgEval(modifier, set)) return false;
                 }
                 return true;
             },
             .None => |sub| {
                 inline for (sub) |q| {
-                    if (q.eval(set)) return false;
+                    if (q.cfgEval(modifier, set)) return false;
                 }
                 return true;
             },
         }
+    }
+
+    pub fn eval(comptime self: Self, set: anytype) bool {
+        return @call(.always_inline, cfgEval, .{self, .auto, set});
     }
 
     pub inline fn with(comptime T: type) Self {

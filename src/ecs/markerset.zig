@@ -118,19 +118,31 @@ pub fn MarkerSet(comptime marker_types: []const type) type {
         }
 
         pub fn setAll(self: *Self, comptime Markers: []const type, value: bool) void {
-            const multi = struct {
-                pub const add_masks = MultiMask.init(.add, Markers);
-                pub const remove_masks = MultiMask.init(.remove, Markers);
-            };
+            const add_masks = comptime MultiMask.init(.add, Markers);
+            const remove_masks = comptime MultiMask.init(.remove, Markers);
             @setEvalBranchQuota(std.math.maxInt(u32));
             if (value) {
-                inline for(multi.add_masks) |m| {
+                inline for(add_masks) |m| {
                     self.bits.masks[m.index] |= m.mask;
                 }
             } else {
-                inline for(multi.remove_masks) |m| {
+                inline for(remove_masks) |m| {
                     self.bits.masks[m.index] &= m.mask;
                 }
+            }
+        }
+
+        pub fn toggle(self: *Self, comptime Marker: type) void {
+            comptime ensureHasType(Marker);
+            const index: usize = comptime indices.id(Marker);
+            self.bits.toggle(index);
+        }
+
+        pub fn toggleAll(self: *Self, comptime Markers: []const type) void {
+            const multi = comptime MultiMask.init(.add, Markers);
+            @setEvalBranchQuota(std.math.maxInt(u32));
+            inline for (multi) |m| {
+                self.bits.masks[m.index] ^= m.mask;
             }
         }
 

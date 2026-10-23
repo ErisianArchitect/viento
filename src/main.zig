@@ -190,7 +190,7 @@ pub fn SystemBuilder(comptime system_fn: anytype) SystemBuilderType(.{.System = 
 
 const ecs = @import("ecs");
 
-const MarkerSet = ecs.MarkerSet(manyTys(0, 1024));
+const MarkerSet = ecs.marker.MarkerSet(manyTys(0, 1024));
 const marker = ecs.marker;
 const q = marker.MarkerQuery;
 
@@ -248,40 +248,182 @@ const test_query = q.all(&.{
 
 const test_query_parts = test_query.participants();
 
-pub fn main(_: std.process.Init) !void {
-    inline for (test_query_parts) |t| {
-        println("Type: {s}", .{@typeName(t)});
+
+pub const ObjectId = packed struct {
+    id: u40,
+    generation: u24,
+};
+comptime {
+    if (@sizeOf(ObjectId) != 8) {
+        @compileError("Not 64-bits");
     }
-    var mset = MarkerSet.init();
-    mset.addAll(&.{Ty(1), Ty(2), Ty(64), Ty(68)});
-    try std.testing.expect(test_query.eval(&mset));
-    try std.testing.expectEqual(mset.bits.masks.len, 16);
-    try std.testing.expect(mset.has(Ty(1)));
-    try std.testing.expect(mset.has(Ty(2)));
-    try std.testing.expect(mset.has(Ty(64)));
-    try std.testing.expect(mset.has(Ty(68)));
-    try std.testing.expect(!mset.has(Ty(0)));
-    try std.testing.expect(!mset.has(Ty(3)));
-    try std.testing.expect(mset.hasAll(&.{Ty(1), Ty(2), Ty(64), Ty(68)}));
-    try std.testing.expect(mset.hasAny(&.{Ty(0), Ty(1), Ty(66)}));
-    try std.testing.expect(mset.hasNone(&.{Ty(0), Ty(3), Ty(66)}));
-    mset.removeAll(&.{Ty(1), Ty(2), Ty(64), Ty(68)});
-    try std.testing.expect(!mset.has(Ty(0)));
-    try std.testing.expect(!mset.has(Ty(1)));
-    try std.testing.expect(!mset.has(Ty(2)));
-    try std.testing.expect(!mset.has(Ty(3)));
-    try std.testing.expect(!mset.has(Ty(64)));
-    try std.testing.expect(!mset.has(Ty(68)));
-    try std.testing.expect(mset.isEmpty());
-    const multi = comptime MarkerSet.MultiMask.init(.add, &.{Ty(1), Ty(2), Ty(64), Ty(68)});
-    try std.testing.expectEqual(multi.len, 2);
+}
+
+const Vec = @import("dsa").Vec;
+
+pub fn main(init: std.process.Init) !void {
+    const alloc = init.gpa;
+    var items = Vec([]const u8).init(alloc);
+    defer items.deinit(alloc);
+    items.push(alloc, "Hello, world!");
+    items.push(alloc, "This is a test.");
+    items.push(alloc, "The quick brown fox jumps over the lazy dog.");
+    for (items.slice()) |item| {
+        println("Item: {s}", .{item});
+    }
+    qprintln("Popping:");
+    while (items.pop()) |item| {
+        println("Popped: {s}", .{item});
+    }
+    items.push(alloc, "Foo");
+    items.push(alloc, "Bar");
+    items.push(alloc, "Foo");
+    items.push(alloc, "Baz");
+    items.push(alloc, "Fred");
+    items.push(alloc, "Foo");
+    items.drain({}, 0, items.len, struct {
+        fn takeItem(_: void, _: usize, item: []const u8) bool {
+            println("Drain: {s}", .{item});
+            return std.mem.eql(u8, item, "Foo");
+        }
+    }.takeItem);
+    for (items.slice()) |item| {
+        println("Post Drain: {s}", .{item});
+    }
+    const removed = items.remove(1);
+    println("Removed: {s}", .{removed});
+    for (items.slice()) |item| {
+        println("Post Remove: {s}", .{item});
+    }
+    items.pushMany(alloc, &.{
+        "Item2",
+        "Item3",
+        "Item4",
+        "Item5",
+        "Item6",
+        "Item7"
+    });
+    var out: [4][]const u8 = @splat("");
+    items.removeMany(2, &out);
+    for (out) |item| {
+        println("Out: {s}", .{item});
+    }
+    for (items.slice()) |item| {
+        println("After removeMany: {s}", .{item});
+    }
+    if (items.contains("Item7")) {
+        qprintln("Contains Item7");
+    } else {
+        @panic("Failure on contains.");
+    }
+    items.insert(alloc, 0, "Inserted into first.");
+    
+    for (items.slice()) |it| {
+        println("After insert: {s}", .{it});
+    }
+
+    items.clear();
+    items.pushMany(alloc, &.{"0", "1", "2"});
+    items.insertMany(alloc, 0, &.{"Ins0", "Ins1", "Ins2"});
+    for (items.slice()) |it| {
+        println("After insertMany: {s}", .{it});
+    }
+    var dump = Vec([]const u8).initCapacity(alloc, 0);
+    defer dump.deinit(alloc);
+    dump.transferFrom(alloc, 0, &items, 0, 3);
+    for (dump.slice()) |it| {
+        println("Dump: {s}", .{it});
+    }
+    for (items.slice()) |it| {
+        println("After Dump: {s}", .{it});
+    }
+    items.pushMany(alloc, &.{"3", "4", "5", "6", "7"});
+    items.clearRange(3, 6);
+    for (items.slice()) |it| {
+        println("After clearRange: {s}", .{it});
+    }
+    items.clear();
+    items.insertManyWith(alloc, 0, 3, {}, struct {
+        pub fn map(_: void, index: usize) []const u8 {
+            return switch (index) {
+                0 => "Zero",
+                1 => "One",
+                2 => "Two",
+                else => @panic("Out of range."),
+            };
+        }
+    }.map);
+    for (items.slice()) |it| {
+        println("After insertManyWith: {s}", .{it});
+    }
+    items.insertManyWith(alloc, 0, 3, {}, struct {
+        pub fn map(_: void, index: usize) []const u8 {
+            return switch (index) {
+                0 => "0",
+                1 => "1",
+                2 => "2",
+                else => @panic("Out of range."),
+            };
+        }
+    }.map);
+    qprintln("-----");
+    for (items.slice()) |it| {
+        println("After insertManyWith: {s}", .{it});
+    }
+    const swap_removed = items.swapRemove(0);
+    qprintln("-----");
+    println("Swap Removed: {s}", .{swap_removed});
+    for (items.slice()) |it| {
+        println("After swapRemove: {s}", .{it});
+    }
+    var swap_remove_many: [2][]const u8 = undefined;
+    items.swapRemoveMany(1, &swap_remove_many);
+    qprintln("-----");
+    for (swap_remove_many) |it| {
+        println("Swap Many Removed: {s}", .{it});
+    }
+    for (items.slice()) |it| {
+        println("After swapRemoveMany: {s}", .{it});
+    }
+    items.swap(0, 1);
+    items.swap(1, 2);
+    for (items.slice()) |it| {
+        println("After swap: {s}", .{it});
+    }
+
+    var strbuf = Vec(u8).init(alloc);
+    defer strbuf.deinit(alloc);
+    strbuf.pushMany(alloc, "Hello, world!");
+    strbuf.pushMany(alloc, "\n");
+    strbuf.pushMany(alloc, "This is a test.");
+    println("Strbuf:\n{s}", .{strbuf.slice()});
+    // inline for (test_query_parts) |t| {
+    //     println("Type: {s}", .{@typeName(t)});
+    // }
+    // var mset = MarkerSet.init();
+    // mset.addAll(&.{Ty(1), Ty(2), Ty(64), Ty(68)});
+    // try std.testing.expect(test_query.eval(&mset));
+    // try std.testing.expectEqual(mset.bits.masks.len, 16);
+    // try std.testing.expect(mset.has(Ty(1)));
+    // try std.testing.expect(mset.has(Ty(2)));
+    // try std.testing.expect(mset.has(Ty(64)));
+    // try std.testing.expect(mset.has(Ty(68)));
+    // try std.testing.expect(!mset.has(Ty(0)));
+    // try std.testing.expect(!mset.has(Ty(3)));
+    // try std.testing.expect(mset.hasAll(&.{Ty(1), Ty(2), Ty(64), Ty(68)}));
+    // try std.testing.expect(mset.hasAny(&.{Ty(0), Ty(1), Ty(66)}));
+    // try std.testing.expect(mset.hasNone(&.{Ty(0), Ty(3), Ty(66)}));
+    // mset.removeAll(&.{Ty(1), Ty(2), Ty(64), Ty(68)});
+    // try std.testing.expect(!mset.has(Ty(0)));
+    // try std.testing.expect(!mset.has(Ty(1)));
+    // try std.testing.expect(!mset.has(Ty(2)));
+    // try std.testing.expect(!mset.has(Ty(3)));
+    // try std.testing.expect(!mset.has(Ty(64)));
+    // try std.testing.expect(!mset.has(Ty(68)));
+    // try std.testing.expect(mset.isEmpty());
+    // const multi = comptime MarkerSet.MultiMask.init(.add, &.{Ty(1), Ty(2), Ty(64), Ty(68)});
+    // try std.testing.expectEqual(multi.len, 2);
     qprintln("Pass");
-    // println("Hash: {d}", .{comp.hashAny("Test")});
-    // println("Hash: {d}", .{comp.hashAny("Test")});
-    // println("Hash: {d}", .{comp.hashAny(u64)});
-    // println("Hash: {d}", .{comp.hashAny(u64)});
-    // println("Hash: {d}", .{comp.hashAny(u32)});
-    // println("Hash: {d}", .{comp.hashAny(u32)});
 }
 
 // pub fn main(_: std.process.Init) !void {
