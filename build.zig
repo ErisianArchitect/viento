@@ -84,6 +84,18 @@ pub fn build(b: *std.Build) void {
 
     connectModules(imports);
 
+    const Fred = enum {
+        Foo,
+        Bar,
+        Baz,
+        Fnord,
+    };
+
+    const fred = b.option(Fred, "fred", "Test");
+    if (fred) |freddy| {
+        std.debug.print("{any}\n", .{freddy});
+    }
+
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
     // to the module defined above, it's sometimes preferable to split business

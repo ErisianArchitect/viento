@@ -321,18 +321,22 @@ pub fn Vec(comptime T: type) type {
         ) void {
             var read_head: usize = start;
             var write_head: usize = start;
-            loop: switch (true) {
-                true => while (read_head < end) {
+            const Branch = enum {
+                Sync,
+                Async,
+            };
+            loop: switch (Branch.Sync) {
+                .Sync => while (read_head < end) {
                     const item = self.ptr[read_head];
                     if (takeItem(ctx, read_head, item)) {
                         read_head += 1;
-                        continue :loop false;
+                        continue :loop .Async;
                     } else {
                         write_head += 1;
                         read_head += 1;
                     }
                 },
-                false => {
+                .Async => {
                     while (read_head < end) {
                         const item = self.ptr[read_head];
                         if (!takeItem(ctx, read_head, item)) {
