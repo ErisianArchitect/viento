@@ -1,15 +1,11 @@
 const std = @import("std");
 
+const tool = @import("build_tools.zig");
+
+const connectModules = tool.connectModules;
+
 const Module = std.Build.Module;
 const Import = std.Build.Module.Import;
-
-pub fn connectModules(modules: []const Import) void {
-    for (modules) |a| {
-        for (modules) |b| {
-            a.module.addImport(b.name, b.module);
-        }
-    }
-}
 
 // Although this function looks imperative, it does not perform the build
 // directly and instead it mutates the build graph (`b`) that will be then
