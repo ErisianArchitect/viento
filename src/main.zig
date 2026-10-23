@@ -261,8 +261,20 @@ comptime {
 
 const Vec = @import("dsa").Vec;
 
-pub fn main(init: std.process.Init) !void {
-    const alloc = init.gpa;
+pub fn main() !void {
+    return testVec();
+}
+
+pub fn testVec() !void {
+    // const alloc = init.gpa;
+    var debug_alloc = std.heap.DebugAllocator(.{.thread_safe = false}).init;
+    const alloc = debug_alloc.allocator();
+    defer {
+        switch (debug_alloc.deinit()) {
+            .leak => @panic("Memory leak."),
+            .ok => {},
+        }
+    }
     var items = Vec([]const u8).init(alloc);
     defer items.deinit(alloc);
     items.push(alloc, "Hello, world!");
@@ -356,13 +368,13 @@ pub fn main(init: std.process.Init) !void {
     for (items.slice()) |it| {
         println("After insertManyWith: {s}", .{it});
     }
-    items.insertManyWith(alloc, 0, 3, {}, struct {
+    items.insertManyWith(alloc, 1, 5, {}, struct {
         pub fn map(_: void, index: usize) []const u8 {
             return switch (index) {
                 0 => "0",
                 1 => "1",
                 2 => "2",
-                else => @panic("Out of range."),
+                else => "Out of range.",
             };
         }
     }.map);

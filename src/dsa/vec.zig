@@ -79,22 +79,26 @@ pub fn Vec(comptime T: type) type {
             self.ensureCapacity(alloc, self.len + count);
         }
 
+        pub fn pop(self: *Self) ?T {
+            if (self.len == 0) return null;
+            self.len -= 1;
+            return self.ptr[self.len];
+        }
+
         pub fn push(self: *Self, alloc: Allocator, value: T) void {
             self.reserve(alloc, 1);
             self.ptr[self.len] = value;
             self.len += 1;
         }
 
-        pub fn pushMany(self: *Self, alloc: Allocator, many: []const T) void {
+        pub fn pushMany(
+            self: *Self,
+            alloc: Allocator,
+            many: []const T,
+        ) void {
             self.reserve(alloc, many.len);
             @memcpy(self.ptr[self.len..][0..many.len], many);
             self.len += many.len;
-        }
-
-        pub fn pop(self: *Self) ?T {
-            if (self.len == 0) return null;
-            self.len -= 1;
-            return self.ptr[self.len];
         }
 
         pub fn pushManyWith(
@@ -112,7 +116,12 @@ pub fn Vec(comptime T: type) type {
             self.len += count;
         }
 
-        pub fn insertUnchecked(self: *Self, alloc: Allocator, index: usize, value: T) void {
+        pub fn insertUnchecked(
+            self: *Self,
+            alloc: Allocator,
+            index: usize,
+            value: T,
+        ) void {
             self.reserve(alloc, 1);
             if (index != self.len) {
                 @memmove(self.ptr[index + 1..self.len + 1], self.ptr[index..self.len]);
@@ -216,7 +225,11 @@ pub fn Vec(comptime T: type) type {
             return self.swapRemoveUnchecked(index);
         }
 
-        pub fn swapRemoveManyUnchecked(self: *Self, index: usize, out: []T) void{
+        pub fn swapRemoveManyUnchecked(
+            self: *Self,
+            index: usize,
+            out: []T,
+        ) void{
             const move_src = self.ptr[index..][0..out.len];
             @memcpy(out, move_src);
             const after_swap_index = index + out.len;
@@ -246,7 +259,11 @@ pub fn Vec(comptime T: type) type {
             self.swapUnchecked(a, b);
         }
 
-        pub fn removeManyUnchecked(self: *Self, index: usize, out: []T) void {
+        pub fn removeManyUnchecked(
+            self: *Self,
+            index: usize,
+            out: []T,
+        ) void {
             @memcpy(out, self.ptr[index..][0..out.len]);
             const move_len = self.len - (index + out.len);
             if (move_len != 0) {
@@ -255,7 +272,11 @@ pub fn Vec(comptime T: type) type {
             self.len -= out.len;
         }
 
-        pub fn removeMany(self: *Self, index: usize, out: []T) void {
+        pub fn removeMany(
+            self: *Self,
+            index: usize,
+            out: []T,
+        ) void {
             safeAssert(index + out.len <= self.len, "Out of bounds.");
             self.removeManyUnchecked(index, out);
         }
@@ -369,5 +390,191 @@ pub fn Vec(comptime T: type) type {
             safeAssert(start <= end, "Start is greater than end.");
             self.clearRangeUnchecked(start, end);
         }
+    };
+}
+
+pub fn VecManaged(comptime T: type) type {
+    return extern struct {
+        const Self = @This();
+        
+        inner: Vec(T),
+        alloc: Allocator,
+
+        pub fn initCapacity(alloc: Allocator, capacity: usize) Self {
+            return .{
+                .inner = Vec(T).initCapacity(capacity),
+                .alloc = alloc,
+            };
+        }
+
+        pub fn init(alloc: Allocator) Self {
+            return .initCapacity(alloc, 0);
+        }
+
+        pub fn deinit(self: Self) void {
+            self.inner.deinit(self.alloc);
+        }
+
+        pub inline fn slice(self: *const Self) []const T {
+            return self.inner.slice();
+        }
+
+        pub inline fn sliceMut(self: *const Self) []T {
+            return self.inner.sliceMut();
+        }
+
+        pub inline fn get(self: *const Self, index: usize) T {
+            return self.inner.get(index);
+        }
+
+        pub inline fn getPtr(self: *const Self, index: usize) *const T {
+            return self.inner.getPtr(index);
+        }
+
+        pub inline fn getMut(self: *Self, index: usize) *T {
+            return self.inner.getMut(index);
+        }
+
+        pub fn ensureCapacity(self: *Self, cap: usize) void {
+            self.inner.ensureCapacity(self.alloc, cap);
+        }
+
+        pub fn reserve(self: *Self, count: usize) void {
+            self.inner.reserve(self.alloc, count);
+        }
+
+        pub fn pop(self: *Self) ?T {
+            self.inner.pop();
+        }
+
+        pub fn push(self: *Self, value: T) void {
+            self.inner.push(value);
+        }
+
+        pub fn pushMany(
+            self: *Self,
+            many: []const T,
+        ) void {
+            self.inner.pushMany(self.alloc, many);
+        }
+
+        pub fn pushManyWith(
+            self: *Self,
+            ctx: anytype,
+            count: usize,
+            map: fn(ctx: @TypeOf(ctx), index: usize) T,
+        ) void {
+            self.inner.pushManyWith(self.alloc, ctx, count, map);
+        }
+
+        pub fn insertUnchecked(
+            self: *Self,
+            index: usize,
+            value: T,
+        ) void {
+            self.inner.insertUnchecked(self.alloc, index, value);
+        }
+
+        pub fn insert(
+            self: *Self,
+            index: usize,
+            value: T,
+        ) void {
+            self.inner.insert(self.alloc, index, value);
+        }
+
+        pub fn insertManyUnchecked(
+            self: *Self,
+            index: usize,
+            many: []const T,
+        ) void {
+            self.inner.insertManyUnchecked(self.alloc, index, many);
+        }
+
+        pub fn insertMany(
+            self: *Self,
+            index: usize,
+            many: []const T,
+        ) void {
+            self.inner.insertMany(self.alloc, index, many);
+        }
+
+        pub fn insertManyWithUnchecked(
+            self: *Self,
+            start: usize,
+            end: usize,
+            ctx: anytype,
+            map: fn(ctx: @TypeOf(ctx), index: usize) T,
+        ) void {
+            self.inner.insertManyWithUnchecked(self.alloc, start, end, ctx, map);
+        }
+
+        pub fn insertManyWith(
+            self: *Self,
+            start: usize,
+            end: usize,
+            ctx: anytype,
+            map: fn(ctx: @TypeOf(ctx), index: usize) T,
+        ) void {
+            self.inner.insertManyWith(self.alloc, start, end, ctx, map);
+        }
+
+        pub fn removeUnchecked(self: *Self, index: usize) T {
+            return self.inner.removeUnchecked(index);
+        }
+
+        pub fn remove(self: *Self, index: usize) T {
+            return self.inner.remove(index);
+        }
+
+        pub fn swapRemoveUnchecked(self: *Self, index: usize) T {
+            return self.inner.swapRemoveUnchecked(index);
+        }
+
+        pub fn swapRemove(self: *Self, index: usize) T {
+            return self.inner.swapRemove(index);
+        }
+
+        pub fn swapRemoveManyUnchecked(
+            self: *Self,
+            index: usize,
+            out: []T,
+        ) void {
+            self.inner.swapRemoveManyUnchecked(index, out);
+        }
+
+        pub fn swapRemoveMany(
+            self: *Self,
+            index: usize,
+            out: []T,
+        ) void {
+            self.inner.swapRemoveMany(index, out);
+        }
+
+        pub fn swapUnchecked(self: *Self, a: usize, b: usize) void {
+            self.inner.swapUnchecked(a, b);
+        }
+
+        pub fn swap(self: *Self, a: usize, b: usize) void {
+            self.inner.swap(a, b);
+        }
+
+        pub fn removeManyUnchecked(
+            self: *Self,
+            index: usize,
+            out: []T,
+        ) void {
+            self.inner.removeManyUnchecked(index, out);
+        }
+
+        pub fn removeMany(
+            self: *Self,
+            index: usize,
+            out: []T,
+        ) void {
+            self.inner.removeMany(index, out);
+        }
+
+        // TODO: transferFromUnchecked and on...
     };
 }
