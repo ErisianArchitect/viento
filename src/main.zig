@@ -262,7 +262,19 @@ comptime {
 const Vec = @import("dsa").Vec;
 
 pub fn main() !void {
-    return testVec();
+    const T = comp.UniqueType(u32);
+    println("Type Name: {s}", .{@typeName(T)});
+    // return testVec();
+    const map1 = StaticTypeMap(usize).init(manyPairs(0, 1000));
+    const set = StaticTypeSet.init(map1.keys());
+    println("Max Bucket Size: {d}", .{map1.maxBucketSize()});
+    try std.testing.expect(set.has(Ty(43)));
+    try std.testing.expect(set.has(Ty(999)));
+    try std.testing.expectEqual(map1.val(Ty(65)), 65);
+    inline for (5..100) |i| {
+        try std.testing.expect(set.has(Ty(i)));
+        try std.testing.expect(map1.has(Ty(i)));
+    }
 }
 
 pub fn testVec() !void {

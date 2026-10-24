@@ -4,9 +4,7 @@ const comp = @import("comp.zig");
 
 const PrivateToken = struct{};
 
-pub inline fn typeHash(comptime T: type) u64 {
-    return comp.typeHash(struct { T, PrivateToken });
-}
+const typeHash = comp.typeHash;
 
 const BucketCalc = struct {
     const Self = @This();

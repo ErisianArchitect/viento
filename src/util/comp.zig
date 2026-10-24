@@ -43,8 +43,7 @@ pub inline fn hashAny(comptime any: anytype) u64 {
 pub inline fn typeHash(comptime T: type) u64 {
     return struct {
         pub const result: u64 = ret: {
-            const Unique = UniqueType(struct {T, PrivateToken});
-            const type_name = @typeName(Unique);
+            const type_name = @typeName(T);
             var hasher = XxHash64.init(HASH_SEED);
             hasher.update(type_name);
             break :ret hasher.final();
