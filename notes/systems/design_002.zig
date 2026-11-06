@@ -1,4 +1,5 @@
-
+// This prevents the code below from reading as having an error in my editor.
+ignore_this_error;
 
 pub fn foo_system(
     // injectables
